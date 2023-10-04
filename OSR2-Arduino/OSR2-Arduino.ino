@@ -1,5 +1,5 @@
-// OSR-Release v2.5,
-// by TempestMAx 23-7-20
+// OSR-Release v2.7,
+// by TempestMAx 25-11-20
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // Can handle three linear channels (L0, L1, L2), three rotation channels (R0, R1, R2) 
@@ -13,8 +13,9 @@
 // v2.2 - OSR2+ release, 1-3-2020
 // v2.3 - T-Valve support added, 1-5-2020
 // v2.4 - T-wist support added; LR servos now +/- 350 for the sake of Raser1's sanity, 1-7-2020
-// v2.5 - Experimental build. Servo Library replaced with alternative capable of high frequencies. 23-7-2020
-// v2.6 - Experimental build. For use with Parallax Feedback 360° Servo (900-00360) in T-wist. 23-9-2020
+// v2.5 - Servo Library replaced with alternative capable of high frequencies. 23-7-2020
+// v2.6 - For use with Parallax Feedback 360° Servo (900-00360) in T-wist. 23-9-2020
+// v2.7 - T-valve suction level control added to L3. 25-11-2020
 
 // ----------------------------
 //   Settings
@@ -59,6 +60,7 @@ class ToyComms {
       xL1[0] = 500;
       xL1[1] = 500;
       xL1[2] = 500;
+      xL1[3] = 500;
       xR1[0] = 500;
       xR1[1] = 500;
       xR1[2] = 500;
@@ -195,7 +197,7 @@ class ToyComms {
             i = i % 10;
 
             // If the commanded axis exists, process command
-            if (0<=i && i<=2) {
+            if (0<=i && i<=3) {
 
               //If it's a linear command
               if (linear) {
@@ -289,7 +291,7 @@ class ToyComms {
 
             byte n;
             // Execute Linear Channels
-            for (n = 0; n <= 2; n++) {
+            for (n = 0; n <= 3; n++) {
               if (xLbuff1[n]>0) {
 
                 // Execute control command
@@ -469,13 +471,13 @@ class ToyComms {
     int inNum2;
 
     // Linear motion
-    int xLbuff1[3];
-    int xLbuff2[3];
-    boolean xLbuffSpd[3];
-    int xL0[3];
-    int xL1[3];
-    long tL0[3];
-    long tL1[3];
+    int xLbuff1[4];
+    int xLbuff2[4];
+    boolean xLbuffSpd[4];
+    int xL0[4];
+    int xL1[4];
+    long tL0[4];
+    long tL1[4];
 
     // Rotation
     int xRbuff1[3];
@@ -701,6 +703,8 @@ int xLin,yLin,zLin;
 int xRot,yRot,zRot;
 // Vibration variables
 int vibe0,vibe1;
+// Vibration variables
+int suck;
 // Velocity tracker variables, for T-Valve
 int xLast;
 float xValve;
@@ -787,6 +791,7 @@ void loop() {
     xLin = toy.xLinear(0,t);
     //yLin = toy.xLinear(1,t); (not used)
     //zLin = toy.xLinear(2,t); (not used)
+    suck = toy.xLinear(3,t);
     xRot = toy.xRotate(0,t);
     yRot = toy.xRotate(1,t);
     zRot = toy.xRotate(2,t);
@@ -796,19 +801,28 @@ void loop() {
     // If you want to mix your servos differently, enter your code below:
 
     // Calculate valve position
-    float Vel,ValveCmd,suck;
+    // Track receiver velocity
+    float Vel,ValveCmd,minVel;
     Vel = xLin - xLast;
     Vel = 50*Vel/tick;
     xLast = xLin;
-    suck = 20;
-    if (Vel > suck) {
-      ValveCmd = Vel-suck;
-    } else if (Vel < 0){
-      ValveCmd = -Vel;
+    // If suck set to zero, open valve
+    if (suck <= 1) {
+      xValve = 1000; 
+    // Otherwise open valve based on receiver velocity
     } else {
-      ValveCmd = 0;
+      minVel = suck;
+      minVel = suck/10;
+      if (Vel > minVel) {
+        ValveCmd = 0.5*(Vel-minVel);
+      } else if (Vel < 0){
+        ValveCmd = -Vel;
+      } else {
+        ValveCmd = 0;
+      }
+      xValve = (2*xValve + ValveCmd)/3;
     }
-    xValve = (4*xValve + ValveCmd)/5;
+    
 
     // Calculate twist position
     float dutyCycle = twistPulseLength;
@@ -831,7 +845,6 @@ void loop() {
     valve  = constrain(valve, 0, 1000);
     twist  = 2*(xRot - map(twistPos,-1500,1500,1000,1));
     twist  = constrain(twist, -750, 750);
-    //Serial.println(map(twistPos,-1400,1400,1,1000));
     
     // Send signals to the servos
     // Note: 1000 = -45deg, 2000 = +45deg
