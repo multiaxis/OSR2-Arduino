@@ -14,6 +14,7 @@
 // v2.3 - T-Valve support added, 1-5-2020
 // v2.4 - T-wist support added; LR servos now +/- 350 for the sake of Raser1's sanity, 1-7-2020
 // v2.5 - Experimental build. Servo Library replaced with alternative capable of high frequencies. 23-7-2020
+// v2.6 - Experimental build. For use with Parallax Feedback 360° Servo (900-00360) in T-wist. 23-9-2020
 
 // ----------------------------
 //   Settings
@@ -24,15 +25,14 @@
 #define Servo_FREQ 250  // (Hz)
 
 // Pin assignments
-#define Servo0_PIN 8  // Fore-Aft Servo (OSR3 only)
-#define Servo1_PIN 2  // Right Servo
-#define Servo2_PIN 4  // Left Servo (change to 4 for Romeo v1.1)
-#define Servo3_PIN 9  // Pitch Servo
+// T-wist feedback goes on digital pin 2
+#define Servo1_PIN 8  // Right Servo (change to 7 for Romeo v1.1)
+#define Servo2_PIN 3  // Left Servo (change to 4 for Romeo v1.1)
+#define Servo3_PIN 9  // Pitch Servo (change to 8 for Romeo v1.1)
 #define Servo4_PIN 12  // Valve Servo
 #define Servo5_PIN 10  // Twist Servo
 #define Vibe0_PIN 5   // Vibration motor 1
 #define Vibe1_PIN 6   // Vibration motor 2
-#define Pot1_PIN 0   // Twist potentiometer
 
 // Arm servo zeros
 // Change these to adjust arm positions
@@ -704,6 +704,13 @@ int vibe0,vibe1;
 // Velocity tracker variables, for T-Valve
 int xLast;
 float xValve;
+// Twist position monitor variables
+volatile int twistPulseLength = 0;
+volatile int twistPulseCycle = 1099;
+volatile int twistPulseStart = 0;
+float twistServoAngPos = 0.5;
+int twistTurns = 0;
+float twistPos;
 
 // Setup function
 // This is run once, when the arduino starts
@@ -714,7 +721,6 @@ void setup() {
   toy.identifyTCode();
 
   // Declare servos and set zero
-  servos.Attach(Servo0_PIN);
   servos.Attach(Servo1_PIN);
   servos.Attach(Servo2_PIN);
   servos.Attach(Servo3_PIN);
@@ -742,6 +748,9 @@ void setup() {
   // Velocity tracker, for T-Valve
   xLast = 500;
   xValve = 0;
+
+  // Initiate position tracking for twist
+  attachInterrupt(0, twistRising, RISING);
 
   // Signal done
   Serial.println("Ready!");
@@ -776,7 +785,7 @@ void loop() {
     // These functions query the t-code object for the position/level at a specified time
     // Number recieved will be an integer, 1-1000
     xLin = toy.xLinear(0,t);
-    yLin = toy.xLinear(1,t);
+    //yLin = toy.xLinear(1,t); (not used)
     //zLin = toy.xLinear(2,t); (not used)
     xRot = toy.xRotate(0,t);
     yRot = toy.xRotate(1,t);
@@ -785,16 +794,6 @@ void loop() {
     vibe1 = toy.xVibe(1,t);
 
     // If you want to mix your servos differently, enter your code below:
-    
-    // Forward-Backward compensation
-    // This calculates platform movement to account for the arc of the servos
-    float lin1,lin2;
-    int fwd2;
-    lin1 = xLin-500;
-    lin1 = lin1*0.00157079632;
-    lin2 = 0.853-cos(lin1);
-    lin2 = 1133*lin2;
-    fwd2 = lin2;
 
     // Calculate valve position
     float Vel,ValveCmd,suck;
@@ -811,21 +810,31 @@ void loop() {
     }
     xValve = (4*xValve + ValveCmd)/5;
 
+    // Calculate twist position
+    float dutyCycle = twistPulseLength;
+    dutyCycle = dutyCycle/twistPulseCycle;
+    float angPos = (dutyCycle - 0.029)/0.942;
+    angPos = constrain(angPos,0,1) - 0.5;
+    if (angPos - twistServoAngPos < - 0.8) { twistTurns += 1; }
+    if (angPos - twistServoAngPos > 0.8) { twistTurns -= 1; }
+    twistServoAngPos = angPos;
+    twistPos = 1000*(angPos + twistTurns);
+    
+
     // Mix and send servo channels
     // Linear scale inputs to servo appropriate numbers
     int stroke,fwd,roll,pitch,valve,twist;
     stroke = map(xLin,1,1000,-350,350);
-    fwd    = map(yLin,1,1000,-180,180);
     roll   = map(yRot,1,1000,-180,180);
     pitch  = map(zRot,1,1000,-350,350);
     valve  = 20*xValve;
-    valve  = constrain(valve, 0, 1000);   
-    twist  = 5*(xRot - map(analogRead(Pot1_PIN),923,100,1,1000));
+    valve  = constrain(valve, 0, 1000);
+    twist  = 2*(xRot - map(twistPos,-1500,1500,1000,1));
     twist  = constrain(twist, -750, 750);
+    //Serial.println(map(twistPos,-1400,1400,1,1000));
     
     // Send signals to the servos
     // Note: 1000 = -45deg, 2000 = +45deg
-    servos.SetMicroseconds(Servo0_PIN, Servo0_ZERO - fwd + fwd2);
     servos.SetMicroseconds(Servo1_PIN, Servo1_ZERO + stroke + roll);
     servos.SetMicroseconds(Servo2_PIN, Servo2_ZERO - stroke + roll);
     servos.SetMicroseconds(Servo3_PIN, Servo3_ZERO - pitch);
@@ -853,4 +862,15 @@ void loop() {
   }
 
 
+}
+
+// Twist position detection functions
+void twistRising() {
+  attachInterrupt(0, twistFalling, FALLING);
+  twistPulseCycle = micros()-twistPulseStart;
+  twistPulseStart = micros();
+}
+void twistFalling() {
+  attachInterrupt(0, twistRising, RISING);
+  twistPulseLength = micros()-twistPulseStart;
 }
