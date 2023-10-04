@@ -1,13 +1,16 @@
-// OSR3-Release v1.1,
-// by TempestVR 15-7-19
+// OSR-Release v2.0,
+// by TempestMAx 28-1-20
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
-// Can handle three linear channels (L0, L1, L2) and two vibration channels (V0, V1)
-// This code is designed to drive the OSR-3 fleshlight robot, but is designed to be
+// Can handle three linear channels (L0, L1, L2), three rotation channels (R0, R1, R2) 
+// and two vibration channels (V0, V1)
+// This code is designed to drive the OSR series of robot, but is also intended to be
 // used as a template to be adapted to run other t-code controlled arduino projects
+// Have fun, play safe!
 
 // Libraries to include
 #include <Servo.h>
+
 
 
 // ----------------------------
@@ -21,9 +24,13 @@ class ToyComms {
 
     // Setup function
     ToyComms() {
+      // Centralise everything
       xL1[0] = 500;
       xL1[1] = 500;
       xL1[2] = 500;
+      xR1[0] = 500;
+      xR1[1] = 500;
+      xR1[2] = 500;
     }
 
     // Function to process serial input
@@ -36,7 +43,8 @@ class ToyComms {
           linear = true;
           vibration = false;
           rotation = false;
-          inNum1 = 0;
+          device = false;
+          inNum1 = 1;
           interval = false;
           velocity = false;
           inNum2 = 0;
@@ -48,7 +56,8 @@ class ToyComms {
           vibration = true;
           rotation = false;
           linear = false;
-          inNum1 = 0;
+          device = false;
+          inNum1 = 1;
           interval = false;
           velocity = false;
           inNum2 = 0;
@@ -58,6 +67,20 @@ class ToyComms {
         case 'r':
         case 'R':
           rotation = true;
+          linear = false;
+          vibration = false;
+          device = false;
+          inNum1 = 1;
+          interval = false;
+          velocity = false;
+          inNum2 = 0;
+        break;
+
+        // Start - Device input
+        case 'd':
+        case 'D':
+          device = true;
+          rotation = false;
           linear = false;
           vibration = false;
           inNum1 = 0;
@@ -103,11 +126,13 @@ class ToyComms {
             if (inNum2 > 10000) {inNum2 = inNum2 % 10000;}
             inNum2 = inNum2 + (inByte - 48);
           // If L,V or R  
-          } else if (linear || vibration || rotation) {
-            // Update the number
-            inNum1 = inNum1*10;
-            if (inNum1 > 999) {inNum1 = inNum1 % 1000;}
-            inNum1 = inNum1 + (inByte - 48);
+          } else if (linear || vibration || rotation || device) {
+            // If less than 4 digits so far, update the number
+            if (inNum1 < 10000) {
+              inNum1 = inNum1*10;
+              inNum1 = inNum1 + (inByte - 48);
+            }
+            
           }
         break;
 
@@ -116,12 +141,28 @@ class ToyComms {
           default:
           // Has a command been input?
           if (linear || vibration || rotation) {
+
+            // Check a channel and a number have been entered
+            if (inNum1 < 100) {
+              Serial.print("Reject: ");
+              Serial.println(inNum1);
+              linear = false;
+              vibration = false;
+              rotation = false;
+            }
+
+            // Increase to 4 digits, if not entered
+            while (inNum1 < 10000) {
+              inNum1 = inNum1*10;
+            }
+            // Eliminate "1" marker
+            inNum1 = inNum1 - 10000;
             
-            // Extract commanded position "x" from last two digits
+            // Extract commanded position "x" from last three digits
             int x,i;
-            x = inNum1 % 100;
-            // Extract commanded axis "i" from third digit
-            i = (inNum1 - x)/100;
+            x = inNum1 % 1000;
+            // Extract commanded axis "i" from first digit
+            i = (inNum1 - x)/1000;
             i = i % 10;
 
             // If the commanded axis exists, process command
@@ -130,7 +171,7 @@ class ToyComms {
               //If it's a linear command
               if (linear) {
 
-                // Save axis command as 1-100
+                // Save axis command as 1-1000
                 xLbuff1[i] = x+1;
                 
                 if (interval) {
@@ -148,10 +189,33 @@ class ToyComms {
                 
               }
 
+
+              //If it's a linear command
+              if (rotation) {
+
+                // Save axis command as 1-1000
+                xRbuff1[i] = x+1;
+                
+                if (interval) {
+                  // Time interval
+                  xRbuff2[i] = inNum2;
+                  xRbuffSpd[i] = false;
+                } else if (velocity) {
+                  // Speed
+                  xRbuff2[i] = inNum2;
+                  xRbuffSpd[i] = true;
+                } else {
+                  // Instant
+                  xRbuff2[i] = 0;
+                }
+                
+              }
+
+
               //If it's a linear command
               if (vibration) {
 
-                // Save axis command as 1-100
+                // Save axis command as 1-1000
                 xVbuff1[i] = x+1;
                 
                 if (interval) {
@@ -168,7 +232,10 @@ class ToyComms {
                 }
                 
               }
+              
             }
+          } else if (device) {
+            Dbuff = inNum1;
           }
 
 
@@ -177,6 +244,7 @@ class ToyComms {
           linear = false;
           vibration = false;
           rotation = false;
+          device = false;
           inNum1 = 0;
           interval = false;
           velocity = false;
@@ -196,7 +264,7 @@ class ToyComms {
 
                 // Execute control command
                 xL0[n] = xLinear(n,t);
-                xL1[n] = map(xLbuff1[n],1,100,0,1000);
+                xL1[n] = xLbuff1[n];
                 // Write the initial time
                 tL0[n] = t;
                 
@@ -218,13 +286,41 @@ class ToyComms {
               }
             }
 
+            // Execute Rotation Channels
+            for (n = 0; n <= 2; n++) {
+              if (xRbuff1[n]>0) {
+
+                // Execute control command
+                xR0[n] = xRotate(n,t);
+                xR1[n] = xRbuff1[n];
+                // Write the initial time
+                tR0[n] = t;
+                
+                // Is the second number a speed
+                if (xRbuffSpd[n]) {
+                  // Speed
+                  tR1[n] = xR1[n]-xR0[n];
+                  if (tR1[n] < 0) {tR1[n] = -tR1[n];}
+                  tR1[n] = tR0[n] + (1000*tR1[n])/xRbuff2[n];  
+                } else {
+                  // Time interval
+                  tR1[n] = tR0[n] + xRbuff2[n];
+                }
+                // Clear channel buffer
+                xRbuff1[n] = 0;
+                xRbuff2[n] = 0;
+                xRbuffSpd[n] = false;
+                  
+              }
+            }
+
             // Execute Vibration Channels
             for (n = 0; n <= 1; n++) {
               if (xVbuff1[n]>0) {
 
                 // Execute control command
                 xV0[n] = xVibe(n,t);
-                xV1[n] = map(xVbuff1[n],1,100,0,1000);
+                xV1[n] = xVbuff1[n];
                 // Write the initial time
                 tV0[n] = t;
                 
@@ -245,6 +341,15 @@ class ToyComms {
                   
               }
             }
+
+            // Execute device commands
+            if (Dbuff > 0) {
+              if (Dbuff == 1) {
+                identifyTCode();
+              }
+
+             
+            }
             
           }
         
@@ -254,8 +359,8 @@ class ToyComms {
       }
     }
 
-    // Establish linear position from time (0-1000)
-    int xLinear(int i,long t) {
+    // Establish linear position from time (1-1000)
+    int xLinear(int i,unsigned long t) {
       // i is axis
       // t is time point
       // x will be the return value
@@ -272,9 +377,28 @@ class ToyComms {
       
       return x;
     }
+    
+    // Establish rotation position from time (1-1000)
+    int xRotate(int i,unsigned long t) {
+      // i is axis
+      // t is time point
+      // x will be the return value
+      int x;
+      
+      // Ramp value
+      if (t > tR1[i]) {
+        x = xR1[i];
+      } else if (t < tR0[i]) {
+        x = xR0[i];
+      } else {
+        x = map(t,tR0[i],tR1[i],xR0[i],xR1[i]);
+      }
+      
+      return x;
+    }
 
-    // Establish vibration level from time (0-1000)
-    int xVibe(int i,long t) {
+    // Establish vibration level from time (1-1000)
+    int xVibe(int i,unsigned long t) {
       // i is level
       // t is time point
       // x will be the return value
@@ -292,6 +416,10 @@ class ToyComms {
       return x;
     }
 
+    // Function to identify the current TCode type over serial
+    void identifyTCode() {
+      Serial.println("TCode v0.2");
+    }
 
   private:
 
@@ -299,6 +427,7 @@ class ToyComms {
     boolean linear;
     boolean vibration;
     boolean rotation;
+    boolean device;
     int inNum1;
     boolean interval;
     boolean velocity;
@@ -313,6 +442,15 @@ class ToyComms {
     long tL0[3];
     long tL1[3];
 
+    // Rotation
+    int xRbuff1[3];
+    int xRbuff2[3];
+    boolean xRbuffSpd[3];
+    int xR0[3];
+    int xR1[3];
+    long tR0[3];
+    long tR1[3];
+
     // Vibration
     int xVbuff1[2];
     int xVbuff2[2];
@@ -321,8 +459,13 @@ class ToyComms {
     int xV1[2];
     long tV0[2];
     long tV1[2];
+
+    // Device commands
+    int Dbuff;
     
 };
+
+
 
 
 
@@ -332,6 +475,7 @@ class ToyComms {
 // ----------------------------
 //   SETUP
 // ----------------------------
+// This code runs once, on startup
 
 // Declare class
 // This uses the t-code object above
@@ -341,11 +485,13 @@ ToyComms toy;
 Servo Servo0;  // Fore-Aft Servo
 Servo Servo1;  // Right Servo
 Servo Servo2;  // Left Servo
+Servo Servo3;  // Pitch Servo
 
 // Specify which pins are attached to what here
 #define Servo0_PIN 8  // Fore-Aft Servo
 #define Servo1_PIN 2  // Right Servo
 #define Servo2_PIN 3  // Left Servo
+#define Servo3_PIN 9  // Pitch Servo
 #define Vibe0_PIN 5   // Vibration motor 1
 #define Vibe1_PIN 6   // Vibration motor 2
 
@@ -355,6 +501,8 @@ int tick;
 
 // Position variables
 int xLin,yLin,zLin;
+// Rotation variables
+int xRot,yRot,zRot;
 // Vibration variables
 int vibe0,vibe1;
 
@@ -363,17 +511,19 @@ int vibe0,vibe1;
 void setup() {
 
   // Start serial
-  Serial.begin(9600);
-  Serial.println("Setup...");
+  Serial.begin(115200);
+  toy.identifyTCode();
 
   // Declare servos and set zero
   Servo0.attach(Servo0_PIN);
   Servo1.attach(Servo1_PIN);
   Servo2.attach(Servo2_PIN);
+  Servo3.attach(Servo3_PIN);
   delay(500);
   Servo0.writeMicroseconds(1500);
   Servo1.writeMicroseconds(1500);
   Servo2.writeMicroseconds(1500);
+  Servo3.writeMicroseconds(1500);
 
   // Set vibration PWM pins
   pinMode(Vibe0_PIN,OUTPUT);
@@ -420,25 +570,28 @@ void loop() {
     nextPulse = nextPulse + tick;
 
     // Output time index
-    long t;
+    unsigned long t;
     t = nextPulse - tick;
 
     // Collect inputs
     // These functions query the t-code object for the position/level at a specified time
-    // Number recieved will be an integer, 0-1000
-    zLin = toy.xLinear(0,t);
-    xLin = toy.xLinear(1,t);
-    yLin = toy.xLinear(2,t);
+    // Number recieved will be an integer, 1-1000
+    xLin = toy.xLinear(0,t);
+    yLin = toy.xLinear(1,t);
+    //zLin = toy.xLinear(2,t); (not used)
+    //xRot = toy.xRotate(0,t); (not used)
+    yRot = toy.xRotate(1,t);
+    zRot = toy.xRotate(2,t);
     vibe0 = toy.xVibe(0,t);
     vibe1 = toy.xVibe(1,t);
 
-    // If you want to control your servos differently, enter your code below:
+    // If you want to mix your servos differently, enter your code below:
     
     // Forward-Backward compensation
     // This calculates platform movement to account for the arc of the servos
     float lin1,lin2;
     int b2;
-    lin1 = zLin-500;
+    lin1 = xLin-500;
     lin1 = lin1*0.00157079632;
     lin2 = 0.853-cos(lin1);
     lin2 = 1133*lin2;
@@ -446,27 +599,29 @@ void loop() {
 
     // Mix and send servo channels
     // Linear scale inputs to servo appropriate numbers
-    int a,b,c;
-    a = map(zLin,0,1000,100,900);
-    b = map(xLin,0,1000,-250,250);
-    c = map(yLin,0,1000,-250,250);
+    int a,b,c,d;
+    a = map(xLin,1,1000,100,900);
+    b = map(yLin,1,1000,-180,180);
+    c = map(yRot,1,1000,-180,180);
+    d = map(zRot,1,1000,-500,500);
     // Send signals to the servos
     // Note: 1000 = -45deg, 2000 = +45deg
-    Servo0.writeMicroseconds(1500 + b - b2);
-    Servo1.writeMicroseconds(1000 + a - c);
-    Servo2.writeMicroseconds(2000 - a - c);
+    Servo0.writeMicroseconds(1500 - b + b2);
+    Servo1.writeMicroseconds(1000 + a + c);
+    Servo2.writeMicroseconds(2000 - a + c);
+    Servo3.writeMicroseconds(1500 + d);
 
     // Done with servo channels
 
     // Output vibration channels
     // These should drive PWM pins connected to vibration motors via MOSFETs or H-bridges.
-    if ((vibe0 > 0) && (vibe0 <= 1000)) {
-      analogWrite(Vibe0_PIN,map(vibe0,0,1000,63,255));
+    if ((vibe0 > 1) && (vibe0 <= 1000)) {
+      analogWrite(Vibe0_PIN,map(vibe0,2,1000,63,255));
     } else {
       analogWrite(Vibe0_PIN,0);
     }
-    if ((vibe1 > 0) && (vibe1 <= 1000)) {
-      analogWrite(Vibe1_PIN,map(vibe1,0,1000,63,255));
+    if ((vibe1 > 1) && (vibe1 <= 1000)) {
+      analogWrite(Vibe1_PIN,map(vibe1,2,1000,63,255));
     } else {
       analogWrite(Vibe1_PIN,0);
     }
