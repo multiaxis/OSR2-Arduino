@@ -1,5 +1,5 @@
-// OSR-Release v2.0,
-// by TempestMAx 28-1-20
+// OSR-Release v2.1,
+// by TempestMAx 1-2-20
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // Can handle three linear channels (L0, L1, L2), three rotation channels (R0, R1, R2) 
@@ -236,6 +236,7 @@ class ToyComms {
             }
           } else if (device) {
             Dbuff = inNum1;
+            device = false;
           }
 
 
@@ -567,11 +568,8 @@ void loop() {
   // Pulse Servos based on time interval
   // This function will run every 20ms, sending a pulse to the servos
   if (millis() > nextPulse) {
+    unsigned long t = nextPulse;
     nextPulse = nextPulse + tick;
-
-    // Output time index
-    unsigned long t;
-    t = nextPulse - tick;
 
     // Collect inputs
     // These functions query the t-code object for the position/level at a specified time
