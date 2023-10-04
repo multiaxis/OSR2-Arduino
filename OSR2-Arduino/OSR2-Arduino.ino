@@ -1,5 +1,5 @@
-// OSR-Release v3.2
-// by TempestMAx 24-8-21
+// OSR-Release v3.3
+// by TempestMAx 3-11-21
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // It can handle:
@@ -14,6 +14,7 @@
 // v3.0 - TCode v0.3 compatible, 8-5-2021
 // v3.1 - Buffer overload bug fix by limiting to 3x4 T-Code channels, axis auto-smoothing for live commands added 7-7-2021
 // v3.2 - Range preference variable storage bug fix, 24-8-21
+// v3.3 - Low speed vibration channel start function added, 3-11-21
 
 
 // ----------------------------
@@ -22,7 +23,7 @@
 // These are the setup parameters for an OSR2 on a Romeo BLE mini v2
 
 // Device IDs, for external reference
-#define FIRMWARE_ID "OSR2-Release_3.2.ino"  // Device and firmware version
+#define FIRMWARE_ID "OSR2-Release_3.3.ino"  // Device and firmware version
 #define TCODE_VER "TCode v0.3"  // Current version of TCode
 
 // Pin assignments
@@ -520,7 +521,7 @@ int xLin,yLin,zLin;
 // Rotation variables
 int xRot,yRot,zRot;
 // Vibration variables
-int vibe0,vibe1;
+int vibe0,vibe0set,vibe1,vibe1set;
 // Lube variables
 int lube;
 // Valve variables
@@ -553,8 +554,8 @@ void setup() {
   tcode.RegisterAxis("R0", "Twist");
   tcode.RegisterAxis("R1", "Roll");
   tcode.RegisterAxis("R2", "Pitch");
-  tcode.RegisterAxis("V0", "Vibe1");
-  if (!LUBE_V1) { tcode.RegisterAxis("V1", "Vibe2"); }
+  tcode.RegisterAxis("V0", "Vibe0");
+  if (!LUBE_V1) { tcode.RegisterAxis("V1", "Vibe1"); }
   tcode.RegisterAxis("A0", "Valve");
   tcode.RegisterAxis("A1", "Suck");
   tcode.AxisInput("A1",VALVE_DEFAULT,'I',3000);
@@ -573,7 +574,9 @@ void setup() {
 
   // Set vibration PWM pins
   pinMode(Vibe0_PIN,OUTPUT);
+  vibe0set = 0;
   pinMode(Vibe1_PIN,OUTPUT);
+  vibe1set = 0;
 
   // Initiate position tracking for twist
   attachInterrupt(0, twistRising, RISING);
@@ -676,17 +679,37 @@ void loop() {
 
   // Output vibration channels
   // These should drive PWM pins connected to vibration motors via MOSFETs or H-bridges.
-  if (vibe0 > 0 && vibe0 <= 9999) {
-    analogWrite(Vibe0_PIN,map(vibe0,1,9999,31,255));
+  // Vibe 0 channel
+  if (vibe0 <= 0) {
+    vibe0set = 0;
+  } else if (vibe0set == 0 && vibe0 > 0) {
+    vibe0set = 5000;
+  } else if (vibe0set > vibe0 + 10) {
+    vibe0set -= 10;
+  } else {
+    vibe0set = vibe0;
+  }
+  if (vibe0set > 0 && vibe0set <= 9999) {
+    analogWrite(Vibe0_PIN,map(vibe0set,1,9999,63,255));
   } else {
     analogWrite(Vibe0_PIN,0);
   }
+  // Vibe 1 channel
+  if (vibe1 <= 0) {
+    vibe1set = 0;
+  } else if (vibe1set == 0 && vibe1 > 0) {
+    vibe1set = 5000;
+  } else if (vibe1set > vibe1 + 10) {
+    vibe1set -= 10;
+  } else {
+    vibe1set = vibe1;
+  }
   if (!LUBE_V1 && vibe1 > 0 && vibe1 <= 9999) {
-    analogWrite(Vibe1_PIN,map(vibe1,1,9999,31,255));
+    analogWrite(Vibe1_PIN,map(vibe1,1,9999,63,255));
   } else {
     analogWrite(Vibe1_PIN,0);
   }
-  // Vibe timeout functions - shuts the vibne channels down if not commanded for a specified interval
+  // Vibe timeout functions - shuts the vibe channels down if not commanded for a specified interval
   if (millis() - tcode.AxisLast("V0") > VIBE_TIMEOUT) { tcode.AxisInput("V0",0,'I',500); }
   if (!LUBE_V1 && millis() - tcode.AxisLast("V1") > VIBE_TIMEOUT) { tcode.AxisInput("V1",0,'I',500); }
   
