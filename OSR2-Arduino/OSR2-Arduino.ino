@@ -1,5 +1,5 @@
-// OSR-Release v2.1,
-// by TempestMAx 1-2-20
+// OSR-Release v2.2,
+// by TempestMAx 1-3-20
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // Can handle three linear channels (L0, L1, L2), three rotation channels (R0, R1, R2) 
@@ -7,6 +7,10 @@
 // This code is designed to drive the OSR series of robot, but is also intended to be
 // used as a template to be adapted to run other t-code controlled arduino projects
 // Have fun, play safe!
+// History:
+// v2.0 - TCode v0.2 compatible, 28-1-2020
+// v2.1 - OSR2 release, 1-2-2020
+// v2.2 - OSR2+ release, 1-3-2020
 
 // Libraries to include
 #include <Servo.h>
@@ -598,16 +602,16 @@ void loop() {
     // Mix and send servo channels
     // Linear scale inputs to servo appropriate numbers
     int a,b,c,d;
-    a = map(xLin,1,1000,100,900);
+    a = map(xLin,1,1000,150,850);
     b = map(yLin,1,1000,-180,180);
     c = map(yRot,1,1000,-180,180);
-    d = map(zRot,1,1000,-500,500);
+    d = map(zRot,1,1000,-350,350);
     // Send signals to the servos
     // Note: 1000 = -45deg, 2000 = +45deg
     Servo0.writeMicroseconds(1500 - b + b2);
     Servo1.writeMicroseconds(1000 + a + c);
     Servo2.writeMicroseconds(2000 - a + c);
-    Servo3.writeMicroseconds(1500 + d);
+    Servo3.writeMicroseconds(1500 - d);
 
     // Done with servo channels
 
