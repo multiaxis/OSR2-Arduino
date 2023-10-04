@@ -1,5 +1,5 @@
-// OSR-Release v3.3
-// by TempestMAx 3-11-21
+// OSR-Release v3.4
+// by TempestMAx 5-3-22
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // It can handle:
@@ -15,6 +15,7 @@
 // v3.1 - Buffer overload bug fix by limiting to 3x4 T-Code channels, axis auto-smoothing for live commands added 7-7-2021
 // v3.2 - Range preference variable storage bug fix, 24-8-21
 // v3.3 - Low speed vibration channel start function added, 3-11-21
+// v3.4 - Support for T-wist 4 added - standard servo now default, parallax is an option, 5-3-22
 
 
 // ----------------------------
@@ -23,7 +24,7 @@
 // These are the setup parameters for an OSR2 on a Romeo BLE mini v2
 
 // Device IDs, for external reference
-#define FIRMWARE_ID "OSR2-Release_3.3.ino"  // Device and firmware version
+#define FIRMWARE_ID "OSR2-Release_3.4.ino"  // Device and firmware version
 #define TCODE_VER "TCode v0.3"  // Current version of TCode
 
 // Pin assignments
@@ -42,11 +43,14 @@
 #define LeftServo_ZERO 1500   // Right Servo
 #define RightServo_ZERO 1500  // Left Servo
 #define PitchServo_ZERO 1500  // Pitch Servo
+#define TwistServo_ZERO 1500  // Twist Servo
 #define ValveServo_ZERO 1500  // Valve Servo
 
 // Other functions
+#define TWIST_PARALLAX false      // (true/false) Parallax 360 feedback servo on twist (t-wist3)
+#define REVERSE_TWIST_SERVO false // (true/false) Reverse twist servo direction 
 #define VALVE_DEFAULT 5000        // Auto-valve default suction level (low-high, 0-9999) 
-#define REVERSE_VALVE_SERVO false // (true/false) Reverse T-Valve direction
+#define REVERSE_VALVE_SERVO true  // (true/false) Reverse T-Valve direction
 #define VIBE_TIMEOUT 2000         // Timeout for vibration channels (milliseconds).
 #define LUBE_V1 false             // (true/false) Lube pump installed instead of vibration channel 1
 #define Lube_PIN 13               // Lube manual input button pin (Connect pin to +5V for ON)
@@ -578,8 +582,8 @@ void setup() {
   pinMode(Vibe1_PIN,OUTPUT);
   vibe1set = 0;
 
-  // Initiate position tracking for twist
-  attachInterrupt(0, twistRising, RISING);
+  // If T-wist3, initiate position tracking for twist
+  if (TWIST_PARALLAX) { attachInterrupt(0, twistRising, RISING); }
   
   // Signal done
   Serial.println("Ready!");
@@ -616,15 +620,17 @@ void loop() {
 
   // If you want to mix your servos differently, enter your code below:
 
-  // Calculate twist position
-  float dutyCycle = twistPulseLength;
-  dutyCycle = dutyCycle/twistPulseCycle;
-  float angPos = (dutyCycle - 0.029)/0.942;
-  angPos = constrain(angPos,0,1) - 0.5;
-  if (angPos - twistServoAngPos < - 0.8) { twistTurns += 1; }
-  if (angPos - twistServoAngPos > 0.8) { twistTurns -= 1; }
-  twistServoAngPos = angPos;
-  twistPos = 1000*(angPos + twistTurns);
+  // If t-wist3, calculate twist position
+  if (TWIST_PARALLAX) { 
+    float dutyCycle = twistPulseLength;
+    dutyCycle = dutyCycle/twistPulseCycle;
+    float angPos = (dutyCycle - 0.029)/0.942;
+    angPos = constrain(angPos,0,1) - 0.5;
+    if (angPos - twistServoAngPos < - 0.8) { twistTurns += 1; }
+    if (angPos - twistServoAngPos > 0.8) { twistTurns -= 1; }
+    twistServoAngPos = angPos;
+    twistPos = 1000*(angPos + twistTurns);
+  }
 
   // Calculate valve position
   // Track receiver velocity
@@ -661,18 +667,23 @@ void loop() {
   stroke = map(xLin,0,9999,-350,350);
   roll   = map(yRot,0,9999,-180,180);
   pitch  = map(zRot,0,9999,-350,350);
+  if (TWIST_PARALLAX) { 
+    twist  = (xRot - map(twistPos,-1500,1500,9999,0))/5;
+    twist  = constrain(twist, -750, 750);
+  } else {
+    twist  = map(xRot,0,9999,1000,-1000);
+    if (REVERSE_TWIST_SERVO) { twist = -twist; }
+  }
   valve  = valvePos -500;
   valve  = constrain(valve, -500, 500);
   if (REVERSE_VALVE_SERVO) { valve = -valve; }
-  twist  = (xRot - map(twistPos,-1500,1500,9999,0))/5;
-  twist  = constrain(twist, -750, 750);
 
   // Set servo output values
   // Note: 1000 = -45deg, 2000 = +45deg
   LeftServo.writeMicroseconds(LeftServo_ZERO + stroke + roll);
   RightServo.writeMicroseconds(RightServo_ZERO - stroke + roll);
   PitchServo.writeMicroseconds(PitchServo_ZERO - pitch);
-  TwistServo.writeMicroseconds(1500 + twist);
+  TwistServo.writeMicroseconds(TwistServo_ZERO + twist);
   ValveServo.writeMicroseconds(ValveServo_ZERO + valve);
   // Done with servo channels
 
@@ -733,7 +744,7 @@ void loop() {
 }
 
 
-// Twist position detection functions
+// T-wist3 parallax position detection functions
 void twistRising() {
   attachInterrupt(0, twistFalling, FALLING);
   twistPulseCycle = micros()-twistPulseStart;
