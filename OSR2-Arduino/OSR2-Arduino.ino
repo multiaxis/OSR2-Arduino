@@ -1,4 +1,4 @@
-// OSR-Release v2.7,
+// OSR-Release v2.7b,
 // by TempestMAx 25-11-20
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
@@ -16,6 +16,7 @@
 // v2.5 - Servo Library replaced with alternative capable of high frequencies. 23-7-2020
 // v2.6 - For use with Parallax Feedback 360° Servo (900-00360) in T-wist. 23-9-2020
 // v2.7 - T-valve suction level control added to L3. 25-11-2020
+// v2.7b - T-valve suction level algorithm modified. 30-11-2020
 
 // ----------------------------
 //   Settings
@@ -27,8 +28,8 @@
 
 // Pin assignments
 // T-wist feedback goes on digital pin 2
-#define Servo1_PIN 8  // Right Servo (change to 7 for Romeo v1.1)
-#define Servo2_PIN 3  // Left Servo (change to 4 for Romeo v1.1)
+#define Servo1_PIN 8  // Left Servo (change to 7 for Romeo v1.1)
+#define Servo2_PIN 3  // Right Servo (change to 4 for Romeo v1.1)
 #define Servo3_PIN 9  // Pitch Servo (change to 8 for Romeo v1.1)
 #define Servo4_PIN 12  // Valve Servo
 #define Servo5_PIN 10  // Twist Servo
@@ -802,27 +803,15 @@ void loop() {
 
     // Calculate valve position
     // Track receiver velocity
-    float Vel,ValveCmd,minVel;
+    float Vel,ValveCmd;
     Vel = xLin - xLast;
-    Vel = 50*Vel/tick;
     xLast = xLin;
-    // If suck set to zero, open valve
-    if (suck <= 1) {
-      xValve = 1000; 
-    // Otherwise open valve based on receiver velocity
+    if (Vel < 0) {
+      ValveCmd = 1000;
     } else {
-      minVel = suck;
-      minVel = suck/10;
-      if (Vel > minVel) {
-        ValveCmd = 0.5*(Vel-minVel);
-      } else if (Vel < 0){
-        ValveCmd = -Vel;
-      } else {
-        ValveCmd = 0;
-      }
-      xValve = (2*xValve + ValveCmd)/3;
+      ValveCmd = 1000-suck;
     }
-    
+    xValve = (2*xValve + ValveCmd)/3;
 
     // Calculate twist position
     float dutyCycle = twistPulseLength;
@@ -841,7 +830,7 @@ void loop() {
     stroke = map(xLin,1,1000,-350,350);
     roll   = map(yRot,1,1000,-180,180);
     pitch  = map(zRot,1,1000,-350,350);
-    valve  = 20*xValve;
+    valve  = xValve;
     valve  = constrain(valve, 0, 1000);
     twist  = 2*(xRot - map(twistPos,-1500,1500,1000,1));
     twist  = constrain(twist, -750, 750);
