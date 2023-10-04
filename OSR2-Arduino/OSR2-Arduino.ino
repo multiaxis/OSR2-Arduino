@@ -1,5 +1,5 @@
-// OSR-Release v2.3,
-// by TempestMAx 1-5-20
+// OSR-Release v2.4,
+// by TempestMAx 1-7-20
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // Can handle three linear channels (L0, L1, L2), three rotation channels (R0, R1, R2) 
@@ -12,6 +12,7 @@
 // v2.1 - OSR2 release, 1-2-2020
 // v2.2 - OSR2+ release, 1-3-2020
 // v2.3 - T-Valve support added, 1-5-2020
+// v2.3 - T-wist support added; LR servos now +/- 350 for the sake of Raser1's sanity, 1-7-2020
 
 
 // Libraries to include
@@ -493,6 +494,7 @@ Servo Servo1;  // Right Servo
 Servo Servo2;  // Left Servo
 Servo Servo3;  // Pitch Servo
 Servo Servo4;  // Valve Servo
+Servo Servo5;  // Twist Servo
 
 // Specify which pins are attached to what here
 #define Servo0_PIN 8  // Fore-Aft Servo
@@ -500,8 +502,10 @@ Servo Servo4;  // Valve Servo
 #define Servo2_PIN 3  // Left Servo
 #define Servo3_PIN 9  // Pitch Servo
 #define Servo4_PIN 12  // Valve Servo
+#define Servo5_PIN 10  // Twist Servo
 #define Vibe0_PIN 5   // Vibration motor 1
 #define Vibe1_PIN 6   // Vibration motor 2
+#define Pot1_PIN 0   // Twist potentiometer
 
 // Declare timing variables
 unsigned long nextPulse;
@@ -531,12 +535,14 @@ void setup() {
   Servo2.attach(Servo2_PIN);
   Servo3.attach(Servo3_PIN);
   Servo4.attach(Servo4_PIN);
+  Servo5.attach(Servo5_PIN); // AAK
   delay(500);
   Servo0.writeMicroseconds(1500);
   Servo1.writeMicroseconds(1500);
   Servo2.writeMicroseconds(1500);
   Servo3.writeMicroseconds(1500);
   Servo4.writeMicroseconds(1500);
+  Servo5.writeMicroseconds(1500); //AAK
 
   // Set vibration PWM pins
   pinMode(Vibe0_PIN,OUTPUT);
@@ -631,18 +637,23 @@ void loop() {
 
     // Mix and send servo channels
     // Linear scale inputs to servo appropriate numbers
-    int a,b,c,d;
-    a = map(xLin,1,1000,150,850);
+    int a,b,c,d,f;
+    a = map(xLin,1,1000,-350,350);
     b = map(yLin,1,1000,-180,180);
     c = map(yRot,1,1000,-180,180);
     d = map(zRot,1,1000,-350,350);
+    f = 5*(xRot - map(analogRead(Pot1_PIN),923,100,1,1000));
+    if (f > 750) {f = 750;}
+    if (f < -750) {f = -750;}
+    
     // Send signals to the servos
     // Note: 1000 = -45deg, 2000 = +45deg
     Servo0.writeMicroseconds(1500 - b + b2);
-    Servo1.writeMicroseconds(1000 + a + c);
-    Servo2.writeMicroseconds(2000 - a + c);
+    Servo1.writeMicroseconds(1500 + a + c);
+    Servo2.writeMicroseconds(1500 - a + c);
     Servo3.writeMicroseconds(1500 - d);
     Servo4.writeMicroseconds(2000 - e);
+    Servo5.writeMicroseconds(1500 + f);
 
     // Done with servo channels
 
