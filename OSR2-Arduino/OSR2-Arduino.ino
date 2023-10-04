@@ -1,5 +1,5 @@
-// OSR-Release v3.1
-// by TempestMAx 7-7-21
+// OSR-Release v3.2
+// by TempestMAx 24-8-21
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // It can handle:
@@ -13,7 +13,7 @@
 // History:
 // v3.0 - TCode v0.3 compatible, 8-5-2021
 // v3.1 - Buffer overload bug fix by limiting to 3x4 T-Code channels, axis auto-smoothing for live commands added 7-7-2021
-
+// v3.2 - Range preference variable storage bug fix, 24-8-21
 
 
 // ----------------------------
@@ -22,7 +22,7 @@
 // These are the setup parameters for an OSR2 on a Romeo BLE mini v2
 
 // Device IDs, for external reference
-#define FIRMWARE_ID "OSR2-Release_3.1.ino"  // Device and firmware version
+#define FIRMWARE_ID "OSR2-Release_3.2.ino"  // Device and firmware version
 #define TCODE_VER "TCode v0.3"  // Current version of TCode
 
 // Pin assignments
@@ -98,7 +98,6 @@ class Axis {
       int lastInterval = t - rampStartTime;
       if ( lastInterval > minInterval && minInterval < MAX_SMOOTH_INTERVAL ) { minInterval += 1; }
       else if ( lastInterval < minInterval && minInterval > MIN_SMOOTH_INTERVAL ) { minInterval -= 1; } 
-      if ( Name == "Up" ) { Serial.println(minInterval); }
       // Set ramp parameters
       rampStart = GetPosition();
       rampStopTime = t + minInterval;  
@@ -380,10 +379,10 @@ class TCode {
 
     // Look for device stop command
     if (command.substring(0,4) == "STOP") {
-        for (i = 0; i < 10; i++) { Linear[i].Stop(); }
-        for (i = 0; i < 10; i++) { Rotation[i].Stop(); }
-        for (i = 0; i < 10; i++) { Vibration[i].Set(0,' ',0); }
-        for (i = 0; i < 10; i++) { Auxiliary[i].Stop(); }  
+        for (i = 0; i < 3; i++) { Linear[i].Stop(); }
+        for (i = 0; i < 3; i++) { Rotation[i].Stop(); }
+        for (i = 0; i < 3; i++) { Vibration[i].Set(0,' ',0); }
+        for (i = 0; i < 3; i++) { Auxiliary[i].Stop(); }  
     } else {
       // Look for numbered device commands
       int commandNumber = command.toInt();
@@ -398,10 +397,10 @@ class TCode {
         break;
   
         case 2:
-          for (i = 0; i < 10; i++) { axisRow("L" + String(i), 8*i, Linear[i].Name); }
-          for (i = 0; i < 10; i++) { axisRow("R" + String(i), 8*i+80, Rotation[i].Name); }
-          for (i = 0; i < 10; i++) { axisRow("V" + String(i), 8*i+160, Vibration[i].Name); }
-          for (i = 0; i < 10; i++) { axisRow("A" + String(i), 8*i+240, Auxiliary[i].Name); }             
+          for (i = 0; i < 3; i++) { axisRow("L" + String(i), 8*i, Linear[i].Name); }
+          for (i = 0; i < 3; i++) { axisRow("R" + String(i), 8*i+80, Rotation[i].Name); }
+          for (i = 0; i < 3; i++) { axisRow("V" + String(i), 8*i+160, Vibration[i].Name); }
+          for (i = 0; i < 3; i++) { axisRow("A" + String(i), 8*i+240, Auxiliary[i].Name); }             
         break;
       }
     }
@@ -672,7 +671,6 @@ void loop() {
   PitchServo.writeMicroseconds(PitchServo_ZERO - pitch);
   TwistServo.writeMicroseconds(1500 + twist);
   ValveServo.writeMicroseconds(ValveServo_ZERO + valve);
- 
   // Done with servo channels
 
 
