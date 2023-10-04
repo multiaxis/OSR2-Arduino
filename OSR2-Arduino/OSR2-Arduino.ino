@@ -1,17 +1,18 @@
-// OSR-Release v3.0,
-// by TempestMAx 8-5-21
+// OSR-Release v3.1
+// by TempestMAx 7-7-21
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // It can handle:
-//   10x linear channels (L0, L1, L2... L9)
-//   10x rotation channels (R0, R1, R2... L9) 
-//   10x vibration channels (V0, V1, V2... V9)
-//   10x auxilliary channels (A0, A1, A2... A9)
+//   3x linear channels (L0, L1, L2)
+//   3x rotation channels (R0, R1, R2) 
+//   3x vibration channels (V0, V1, V2)
+//   3x auxilliary channels (A0, A1, A2)
 // This code is designed to drive the OSR2 stroker robot, but is also intended to be
 // used as a template to be adapted to run other t-code controlled arduino projects
 // Have fun, play safe!
 // History:
 // v3.0 - TCode v0.3 compatible, 8-5-2021
+// v3.1 - Buffer overload bug fix by limiting to 3x4 T-Code channels, axis auto-smoothing for live commands added 7-7-2021
 
 
 
@@ -21,7 +22,7 @@
 // These are the setup parameters for an OSR2 on a Romeo BLE mini v2
 
 // Device IDs, for external reference
-#define FIRMWARE_ID "OSR2-Release_3.0.ino"  // Device and firmware version
+#define FIRMWARE_ID "OSR2-Release_3.1.ino"  // Device and firmware version
 #define TCODE_VER "TCode v0.3"  // Current version of TCode
 
 // Pin assignments
@@ -45,10 +46,15 @@
 // Other functions
 #define VALVE_DEFAULT 5000        // Auto-valve default suction level (low-high, 0-9999) 
 #define REVERSE_VALVE_SERVO false // (true/false) Reverse T-Valve direction
-#define VIBE_TIMEOUT 2000         // Timeout for vibration channels (microseconds).
+#define VIBE_TIMEOUT 2000         // Timeout for vibration channels (milliseconds).
 #define LUBE_V1 false             // (true/false) Lube pump installed instead of vibration channel 1
 #define Lube_PIN 13               // Lube manual input button pin (Connect pin to +5V for ON)
 #define Lube_SPEED 255            // Lube pump speed (0-255)
+#define MIN_SMOOTH_INTERVAL 3     // Minimum auto-smooth ramp interval for live commands (ms)
+#define MAX_SMOOTH_INTERVAL 100   // Maximum auto-smooth ramp interval for live commands (ms)
+
+// T-Code Channels
+#define CHANNELS 3                // Number of channels of each type (LRVA)
 
 // Libraries used
 #include <Servo.h>  // Standard Arduino servo library
@@ -74,6 +80,9 @@ class Axis {
     // Set Empty Name
     Name = "";
     lastT = 0;
+
+    // Live command auto-smooth
+    minInterval = MAX_SMOOTH_INTERVAL;
       
   }
 
@@ -83,10 +92,19 @@ class Axis {
     x = constrain(x,0,9999);
     y = constrain(y,0,9999999);
     // Set ramp parameters, based on inputs
+    // Live command
     if ( y == 0 || ( ext != 'S' && ext != 'I' ) ) {
-      rampStopTime = t;
-      rampStart = x;
-    } else if ( ext == 'S' ) {
+      // update auto-smooth regulator
+      int lastInterval = t - rampStartTime;
+      if ( lastInterval > minInterval && minInterval < MAX_SMOOTH_INTERVAL ) { minInterval += 1; }
+      else if ( lastInterval < minInterval && minInterval > MIN_SMOOTH_INTERVAL ) { minInterval -= 1; } 
+      if ( Name == "Up" ) { Serial.println(minInterval); }
+      // Set ramp parameters
+      rampStart = GetPosition();
+      rampStopTime = t + minInterval;  
+    } 
+    // Speed command
+    else if ( ext == 'S' ) {
       rampStart = GetPosition();  // Start from current position
       int d = x - rampStart;  // Distance to move
       if (d<0) { d = -d; }
@@ -94,9 +112,13 @@ class Axis {
       dt *= 100;
       dt /= y; 
       rampStopTime = t + dt;  // Time to arrive at new position
-    } else if ( ext == 'I' ) {
+      //if (rampStopTime < t + minInterval) { rampStopTime = t + minInterval; }
+    }
+    // Interval command
+    else if ( ext == 'I' ) {
       rampStart = GetPosition();  // Start from current position
       rampStopTime = t + y;  // Time to arrive at new position
+      //if (rampStopTime < t + minInterval) { rampStopTime = t + minInterval; }
     }
     rampStartTime = t;
     rampStop = x;
@@ -139,6 +161,9 @@ class Axis {
   int rampStop;
   unsigned long rampStopTime;
 
+  // Live command auto-smooth regulator
+  int minInterval;
+
 };
 
 
@@ -154,7 +179,7 @@ class TCode {
     tcodeID = tcode;
 
     // Vibe channels start at 0
-    for (int i = 0; i < 10; i++) { Vibration[i].Set(0,' ',0); }
+    for (int i = 0; i < CHANNELS; i++) { Vibration[i].Set(0,' ',0); }
     
   }
 
@@ -162,7 +187,7 @@ class TCode {
   void RegisterAxis(String ID, String axisName) {
     char type = ID.charAt(0);
     int channel = ID.charAt(1) - '0';
-    if ((0 <= channel && channel <= 9)) {
+    if ((0 <= channel && channel < CHANNELS)) {
       switch(type) {
         // Axis commands
         case 'L': Linear[channel].Name = axisName; break;
@@ -196,7 +221,7 @@ class TCode {
   void AxisInput(String ID, int magnitude, char extension, long extMagnitude) {
     char type = ID.charAt(0);
     int channel = ID.charAt(1) - '0';
-    if ((0 <= channel && channel <= 9)) {
+    if ((0 <= channel && channel < CHANNELS)) {
       switch(type) {
         // Axis commands
         case 'L': Linear[channel].Set(magnitude,extension,extMagnitude); break;
@@ -212,7 +237,7 @@ class TCode {
     int x = 5000; // This is the return variable
     char type = ID.charAt(0);
     int channel = ID.charAt(1) - '0';
-    if ((0 <= channel && channel <= 9)) {
+    if ((0 <= channel && channel < CHANNELS)) {
       switch(type) {
         // Axis commands
         case 'L': x = Linear[channel].GetPosition(); break;
@@ -229,7 +254,7 @@ class TCode {
     unsigned long t = 0; // Return time
     char type = ID.charAt(0);
     int channel = ID.charAt(1) - '0';
-    if ((0 <= channel && channel <= 9)) {
+    if ((0 <= channel && channel < CHANNELS)) {
       switch(type) {
         // Axis commands
         case 'L': t = Linear[channel].lastT; break;
@@ -241,17 +266,18 @@ class TCode {
     return t;
   }
 
-
   private:
+  // Strings
   String firmwareID;
   String tcodeID;
   String bufferString; // String to hold incomming commands
 
+
   // Declare axes
-  Axis Linear[10];
-  Axis Rotation[10];
-  Axis Vibration[10];
-  Axis Auxiliary[10];
+  Axis Linear[CHANNELS];
+  Axis Rotation[CHANNELS];
+  Axis Vibration[CHANNELS];
+  Axis Auxiliary[CHANNELS];
 
   // Function to divide up and execute input string
   void executeString(String bufferString) {
@@ -259,6 +285,7 @@ class TCode {
     while (index > 0) {
       readCmd(bufferString.substring(0,index));  // Read off first command
       bufferString = bufferString.substring(index+1);  // Remove first command from string
+      bufferString.trim();
       index = bufferString.indexOf(' ');  // Look for next space
     }
     readCmd(bufferString);  // Read off last command
@@ -300,8 +327,8 @@ class TCode {
   
     // Check for channel number
     int channel = command.charAt(1) - '0';
-    if (channel < 0 || channel > 9) {valid = false;}
-    channel = constrain(channel,0,9);
+    if (channel < 0 || channel >= CHANNELS) {valid = false;}
+    channel = constrain(channel,0,CHANNELS);
   
     // Check for an extension
     char extension = ' ';
@@ -544,6 +571,10 @@ void setup() {
   PitchServo.attach(PitchServo_PIN);
   TwistServo.attach(TwistServo_PIN);
   ValveServo.attach(ValveServo_PIN);
+
+  // Set vibration PWM pins
+  pinMode(Vibe0_PIN,OUTPUT);
+  pinMode(Vibe1_PIN,OUTPUT);
 
   // Initiate position tracking for twist
   attachInterrupt(0, twistRising, RISING);
