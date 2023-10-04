@@ -1,5 +1,5 @@
-// OSR-Release v2.4,
-// by TempestMAx 1-7-20
+// OSR-Release v2.5,
+// by TempestMAx 23-7-20
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // Can handle three linear channels (L0, L1, L2), three rotation channels (R0, R1, R2) 
@@ -12,11 +12,35 @@
 // v2.1 - OSR2 release, 1-2-2020
 // v2.2 - OSR2+ release, 1-3-2020
 // v2.3 - T-Valve support added, 1-5-2020
-// v2.3 - T-wist support added; LR servos now +/- 350 for the sake of Raser1's sanity, 1-7-2020
+// v2.4 - T-wist support added; LR servos now +/- 350 for the sake of Raser1's sanity, 1-7-2020
+// v2.5 - Experimental build. Servo Library replaced with alternative capable of high frequencies. 23-7-2020
 
+// ----------------------------
+//   Settings
+// ----------------------------
 
-// Libraries to include
-#include <Servo.h>
+// Servo operating frequency
+// (recommend 250 Hz or less)
+#define Servo_FREQ 250  // (Hz)
+
+// Pin assignments
+#define Servo0_PIN 8  // Fore-Aft Servo (OSR3 only)
+#define Servo1_PIN 2  // Right Servo
+#define Servo2_PIN 4  // Left Servo (change to 4 for Romeo v1.1)
+#define Servo3_PIN 9  // Pitch Servo
+#define Servo4_PIN 12  // Valve Servo
+#define Servo5_PIN 10  // Twist Servo
+#define Vibe0_PIN 5   // Vibration motor 1
+#define Vibe1_PIN 6   // Vibration motor 2
+#define Pot1_PIN 0   // Twist potentiometer
+
+// Arm servo zeros
+// Change these to adjust arm positions
+// (1500 = centre)
+#define Servo0_ZERO 1500  // Fore-Aft Servo (OSR3 only)
+#define Servo1_ZERO 1500  // Right Servo
+#define Servo2_ZERO 1500  // Left Servo
+#define Servo3_ZERO 1500  // Pitch Servo
 
 
 
@@ -284,6 +308,8 @@ class ToyComms {
                   // Time interval
                   tL1[n] = tL0[n] + xLbuff2[n];
                 }
+                // Smoothing limit
+                if (tL1[n]-tL0[n] < 20) { tL1[n] = tL0[n] + 20; }
                 // Clear channel buffer
                 xLbuff1[n] = 0;
                 xLbuff2[n] = 0;
@@ -312,6 +338,8 @@ class ToyComms {
                   // Time interval
                   tR1[n] = tR0[n] + xRbuff2[n];
                 }
+                // Smoothing limit
+                if (tR1[n]-tR0[n] < 20) { tR1[n] = tR0[n] + 20; }
                 // Clear channel buffer
                 xRbuff1[n] = 0;
                 xRbuff2[n] = 0;
@@ -476,6 +504,180 @@ class ToyComms {
 
 
 
+// ----------------------------
+//   Servo Interface
+// ----------------------------
+// This is a replacement for the standard arduino servo library that allows much
+// more control over when and how often the servo pulses are sent
+
+class TServo {
+  public:
+
+    TServo(){
+    }
+
+    // Function to register servos attached to pins
+    void Attach(int pinNumber) {
+      hasServo[pinNumber] = true;
+      pulseLength[pinNumber] = 1500;
+      switch (pinNumber) {
+        case 2:  DDRD |= B00000100; break;
+        case 3:  DDRD |= B00001000; break;
+        case 4:  DDRD |= B00010000; break;
+        case 5:  DDRD |= B00100000; break;
+        case 6:  DDRD |= B01000000; break;
+        case 7:  DDRD |= B10000000; break;
+        case 8:  DDRB |= B00000001; break;
+        case 9:  DDRB |= B00000010; break;
+        case 10: DDRB |= B00000100; break;
+        case 11: DDRB |= B00001000; break;
+        case 12: DDRB |= B00010000; break;
+        case 13: DDRB |= B00100000; break;
+      }
+      
+    }
+
+    // Function to register servos removed from pins
+    void Detach(int pinNumber) {
+      hasServo[pinNumber] = false;
+      switch (pinNumber) {
+        case 2:  DDRD &= B00000100; break;
+        case 3:  DDRD &= B00001000; break;
+        case 4:  DDRD &= B00010000; break;
+        case 5:  DDRD &= B00100000; break;
+        case 6:  DDRD &= B01000000; break;
+        case 7:  DDRD &= B10000000; break;
+        case 8:  DDRB &= B00000001; break;
+        case 9:  DDRB &= B00000010; break;
+        case 10: DDRB &= B00000100; break;
+        case 11: DDRB &= B00001000; break;
+        case 12: DDRB &= B00010000; break;
+        case 13: DDRB &= B00100000; break;
+      }
+      
+    }
+
+    // Function to set the pulse length for a specified servo
+    // (0 = no Max frequency)
+    void SetMaxFreq(int pinNumber,int setFreq) {
+      if (setFreq == 0) {
+        minInterval[pinNumber] = 0;
+      } else {
+        minInterval[pinNumber] = 1000000/setFreq;
+      }
+
+    }
+
+    // Function to set the pulse length for a specified servo
+    void SetMicroseconds(int pinNumber,int setPulseLength) {
+      pulseLength[pinNumber] = constrain(setPulseLength,500,2500);
+    }
+
+
+    // Function to execute a parallel servo pulse
+    void Execute() {
+
+      // Identify active pins to drive
+      unsigned long timeNow;
+      boolean pinActive[14];
+      timeNow = micros();
+      for (int i=0; i<14; i++) {
+        if (hasServo[i] && ((minInterval[i] == 0) || (timeNow > (pinTimeOn[i] + minInterval[i])))) {
+        //if (hasServo[i] && ((timeNow > (pinTimeOn[i] + minInterval[i])))) {
+          servoOrder[i] = i;
+          pinActive[i] = true;
+        } else {
+          servoOrder[i] = 0;
+          pinActive[i] = false;
+        }
+      }
+
+      // Sort pins into order of pulse length
+      int copy;
+      for (int j=13; j>0; j--) {
+        for (int i=13; i>13-j; i--) {
+          if (( servoOrder[i] == 0 && servoOrder[i-1] > 0 ) || (servoOrder[i]>0 && servoOrder[i-1]>0 && pulseLength[servoOrder[i]] < pulseLength[servoOrder[i-1]])){
+            copy = servoOrder[i-1];
+            servoOrder[i-1] = servoOrder[i];
+            servoOrder[i] = copy;
+          }
+        } 
+      }
+
+      // Log start time and turn on pins
+      byte dMod,bMod;
+      dMod = 0;
+      if (pinActive[2]) {dMod |= B00000100;}
+      if (pinActive[3]) {dMod |= B00001000;}
+      if (pinActive[4]) {dMod |= B00010000;}
+      if (pinActive[5]) {dMod |= B00100000;}
+      if (pinActive[6]) {dMod |= B01000000;}
+      if (pinActive[7]) {dMod |= B10000000;}
+      bMod = 0;
+      if (pinActive[8]) {bMod |= B00000001;}
+      if (pinActive[9]) {bMod |= B00000010;}
+      if (pinActive[10]) {bMod |= B00000100;}
+      if (pinActive[11]) {bMod |= B00001000;}
+      if (pinActive[12]) {bMod |= B00010000;}
+      if (pinActive[13]) {bMod |= B00100000;}   
+      timeNow = micros();
+      PORTD |= dMod;
+      PORTB |= bMod;        
+
+      // Calculate pin off times
+      for (int i = 0; i<14; i++) {
+        if (pinActive[i]) {
+          pinTimeOff[i] = timeNow + pulseLength[i];
+          pinTimeOn[i] = timeNow;
+        }
+      }
+
+      // Watch time and turn servo pins off in sequence
+      unsigned long timeOff;
+      for (int i = 0; i<14; i++) {
+        if (servoOrder[i]>0) {
+          timeOff = pinTimeOff[servoOrder[i]];
+          while(timeNow < timeOff) {
+            timeNow = micros();
+          }
+          pinOff(servoOrder[i]);
+        }
+      }
+       
+    }
+    
+
+  private:
+
+    // Function to turn off a specified pin
+    void pinOff(int pinNumber) {
+      switch (pinNumber) {
+        case 2:  PORTD &= B11111011; break;
+        case 3:  PORTD &= B11110111; break;
+        case 4:  PORTD &= B11101111; break;
+        case 5:  PORTD &= B11011111; break;
+        case 6:  PORTD &= B10111111; break;
+        case 7:  PORTD &= B01111111; break;
+        case 8:  PORTB &= B11111110; break;
+        case 9:  PORTB &= B11111101; break;
+        case 10: PORTB &= B11111011; break;
+        case 11: PORTB &= B11110111; break;
+        case 12: PORTB &= B11101111; break;
+        case 13: PORTB &= B11011111; break;
+      }
+      
+    }
+
+    boolean hasServo[14];            // Which pins have servos on
+    unsigned long minInterval[14];   // This is the minimum time between starting servo pulses [microsec]
+    int pulseLength[14];             // Length of pulses to send [microsec]
+    int servoOrder[14];              // Index order in which servo pulses are to be turned off
+    unsigned long pinTimeOn[14];     // Time at which pins were turned on [microsec]
+    unsigned long pinTimeOff[14];    // Time at which pins are to be turned off [microsec]
+
+};
+
+
 
 
 
@@ -484,28 +686,10 @@ class ToyComms {
 // ----------------------------
 // This code runs once, on startup
 
-// Declare class
+// Declare classes
 // This uses the t-code object above
-ToyComms toy; 
-
-// Declare servos
-Servo Servo0;  // Fore-Aft Servo
-Servo Servo1;  // Right Servo
-Servo Servo2;  // Left Servo
-Servo Servo3;  // Pitch Servo
-Servo Servo4;  // Valve Servo
-Servo Servo5;  // Twist Servo
-
-// Specify which pins are attached to what here
-#define Servo0_PIN 8  // Fore-Aft Servo
-#define Servo1_PIN 2  // Right Servo
-#define Servo2_PIN 3  // Left Servo
-#define Servo3_PIN 9  // Pitch Servo
-#define Servo4_PIN 12  // Valve Servo
-#define Servo5_PIN 10  // Twist Servo
-#define Vibe0_PIN 5   // Vibration motor 1
-#define Vibe1_PIN 6   // Vibration motor 2
-#define Pot1_PIN 0   // Twist potentiometer
+ToyComms toy;
+TServo servos; 
 
 // Declare timing variables
 unsigned long nextPulse;
@@ -530,19 +714,14 @@ void setup() {
   toy.identifyTCode();
 
   // Declare servos and set zero
-  Servo0.attach(Servo0_PIN);
-  Servo1.attach(Servo1_PIN);
-  Servo2.attach(Servo2_PIN);
-  Servo3.attach(Servo3_PIN);
-  Servo4.attach(Servo4_PIN);
-  Servo5.attach(Servo5_PIN); // AAK
-  delay(500);
-  Servo0.writeMicroseconds(1500);
-  Servo1.writeMicroseconds(1500);
-  Servo2.writeMicroseconds(1500);
-  Servo3.writeMicroseconds(1500);
-  Servo4.writeMicroseconds(1500);
-  Servo5.writeMicroseconds(1500); //AAK
+  servos.Attach(Servo0_PIN);
+  servos.Attach(Servo1_PIN);
+  servos.Attach(Servo2_PIN);
+  servos.Attach(Servo3_PIN);
+  servos.Attach(Servo4_PIN);
+  servos.SetMaxFreq(Servo4_PIN,50);
+  servos.Attach(Servo5_PIN);
+  servos.SetMaxFreq(Servo5_PIN,50);
 
   // Set vibration PWM pins
   pinMode(Vibe0_PIN,OUTPUT);
@@ -556,11 +735,11 @@ void setup() {
   analogWrite(Vibe1_PIN,0);
 
   // Set servo pulse interval
-  tick = 20; //ms
+  tick = 1000/Servo_FREQ; //ms
   // Set time for first pulse
   nextPulse = millis() + tick;
 
-  // Velocity tracker
+  // Velocity tracker, for T-Valve
   xLast = 500;
   xValve = 0;
 
@@ -610,16 +789,17 @@ void loop() {
     // Forward-Backward compensation
     // This calculates platform movement to account for the arc of the servos
     float lin1,lin2;
-    int b2;
+    int fwd2;
     lin1 = xLin-500;
     lin1 = lin1*0.00157079632;
     lin2 = 0.853-cos(lin1);
     lin2 = 1133*lin2;
-    b2 = lin2;
+    fwd2 = lin2;
 
     // Calculate valve position
     float Vel,ValveCmd,suck;
     Vel = xLin - xLast;
+    Vel = 50*Vel/tick;
     xLast = xLin;
     suck = 20;
     if (Vel > suck) {
@@ -630,30 +810,28 @@ void loop() {
       ValveCmd = 0;
     }
     xValve = (4*xValve + ValveCmd)/5;
-    int e;
-    e = 20*xValve;
-    if (e > 1000) {e = 1000;}
-
 
     // Mix and send servo channels
     // Linear scale inputs to servo appropriate numbers
-    int a,b,c,d,f;
-    a = map(xLin,1,1000,-350,350);
-    b = map(yLin,1,1000,-180,180);
-    c = map(yRot,1,1000,-180,180);
-    d = map(zRot,1,1000,-350,350);
-    f = 5*(xRot - map(analogRead(Pot1_PIN),923,100,1,1000));
-    if (f > 750) {f = 750;}
-    if (f < -750) {f = -750;}
+    int stroke,fwd,roll,pitch,valve,twist;
+    stroke = map(xLin,1,1000,-350,350);
+    fwd    = map(yLin,1,1000,-180,180);
+    roll   = map(yRot,1,1000,-180,180);
+    pitch  = map(zRot,1,1000,-350,350);
+    valve  = 20*xValve;
+    valve  = constrain(valve, 0, 1000);   
+    twist  = 5*(xRot - map(analogRead(Pot1_PIN),923,100,1,1000));
+    twist  = constrain(twist, -750, 750);
     
     // Send signals to the servos
     // Note: 1000 = -45deg, 2000 = +45deg
-    Servo0.writeMicroseconds(1500 - b + b2);
-    Servo1.writeMicroseconds(1500 + a + c);
-    Servo2.writeMicroseconds(1500 - a + c);
-    Servo3.writeMicroseconds(1500 - d);
-    Servo4.writeMicroseconds(2000 - e);
-    Servo5.writeMicroseconds(1500 + f);
+    servos.SetMicroseconds(Servo0_PIN, Servo0_ZERO - fwd + fwd2);
+    servos.SetMicroseconds(Servo1_PIN, Servo1_ZERO + stroke + roll);
+    servos.SetMicroseconds(Servo2_PIN, Servo2_ZERO - stroke + roll);
+    servos.SetMicroseconds(Servo3_PIN, Servo3_ZERO - pitch);
+    servos.SetMicroseconds(Servo4_PIN, 2000 - valve);
+    servos.SetMicroseconds(Servo5_PIN, 1500 + twist);
+    servos.Execute();
 
     // Done with servo channels
 
