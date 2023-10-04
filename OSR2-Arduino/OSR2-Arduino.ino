@@ -1,5 +1,10 @@
-// V3: 26-3-19 Nerf/stop buttons and encoder added
-// V4: 26-3-19 Vibration channels added
+// OSR3-Release v1.1,
+// by TempestVR 15-7-19
+// Please copy, share, learn, innovate, give attribution.
+// Decodes T-code commands and uses them to control servos and vibration motors
+// Can handle three linear channels (L0, L1, L2) and two vibration channels (V0, V1)
+// This code is designed to drive the OSR-3 fleshlight robot, but is designed to be
+// used as a template to be adapted to run other t-code controlled arduino projects
 
 // Libraries to include
 #include <Servo.h>
@@ -8,6 +13,8 @@
 // ----------------------------
 //   Serial Comms Interface
 // ----------------------------
+// This is a t-code object that manages the serial comms from the computer
+// Leave this section of the code alone unless you know what you're doing
 
 class ToyComms {
   public:
@@ -247,7 +254,7 @@ class ToyComms {
       }
     }
 
-    // Establish linear position from time
+    // Establish linear position from time (0-1000)
     int xLinear(int i,long t) {
       // i is axis
       // t is time point
@@ -266,7 +273,7 @@ class ToyComms {
       return x;
     }
 
-    // Establish vibration level from time
+    // Establish vibration level from time (0-1000)
     int xVibe(int i,long t) {
       // i is level
       // t is time point
@@ -326,8 +333,8 @@ class ToyComms {
 //   SETUP
 // ----------------------------
 
-
 // Declare class
+// This uses the t-code object above
 ToyComms toy; 
 
 // Declare servos
@@ -335,13 +342,14 @@ Servo Servo0;  // Fore-Aft Servo
 Servo Servo1;  // Right Servo
 Servo Servo2;  // Left Servo
 
+// Specify which pins are attached to what here
 #define Servo0_PIN 8  // Fore-Aft Servo
 #define Servo1_PIN 2  // Right Servo
 #define Servo2_PIN 3  // Left Servo
 #define Vibe0_PIN 5   // Vibration motor 1
 #define Vibe1_PIN 6   // Vibration motor 2
 
-// Timing variables
+// Declare timing variables
 unsigned long nextPulse;
 int tick;
 
@@ -350,6 +358,8 @@ int xLin,yLin,zLin;
 // Vibration variables
 int vibe0,vibe1;
 
+// Setup function
+// This is run once, when the arduino starts
 void setup() {
 
   // Start serial
@@ -377,7 +387,7 @@ void setup() {
   analogWrite(Vibe1_PIN,0);
 
   // Set servo pulse interval
-  tick = 20;
+  tick = 20; //ms
   // Set time for first pulse
   nextPulse = millis() + tick;
 
@@ -392,15 +402,20 @@ void setup() {
 // ----------------------------
 //   MAIN
 // ----------------------------
+// This loop runs continuously
 
 void loop() {
 
   // Read serial
+  // This will run continuously
   if (Serial.available() > 0) {
+    // Send the serial bytes to the t-code object
+    // This is the only required input for the object
     toy.serialRead(Serial.read());
   }
 
   // Pulse Servos based on time interval
+  // This function will run every 20ms, sending a pulse to the servos
   if (millis() > nextPulse) {
     nextPulse = nextPulse + tick;
 
@@ -409,13 +424,18 @@ void loop() {
     t = nextPulse - tick;
 
     // Collect inputs
+    // These functions query the t-code object for the position/level at a specified time
+    // Number recieved will be an integer, 0-1000
     zLin = toy.xLinear(0,t);
     xLin = toy.xLinear(1,t);
     yLin = toy.xLinear(2,t);
     vibe0 = toy.xVibe(0,t);
     vibe1 = toy.xVibe(1,t);
+
+    // If you want to control your servos differently, enter your code below:
     
-    // fwd-aft compensation
+    // Forward-Backward compensation
+    // This calculates platform movement to account for the arc of the servos
     float lin1,lin2;
     int b2;
     lin1 = zLin-500;
@@ -424,16 +444,22 @@ void loop() {
     lin2 = 1133*lin2;
     b2 = lin2;
 
-    // Mix servo channels
+    // Mix and send servo channels
+    // Linear scale inputs to servo appropriate numbers
     int a,b,c;
     a = map(zLin,0,1000,100,900);
     b = map(xLin,0,1000,-250,250);
     c = map(yLin,0,1000,-250,250);
+    // Send signals to the servos
+    // Note: 1000 = -45deg, 2000 = +45deg
     Servo0.writeMicroseconds(1500 + b - b2);
     Servo1.writeMicroseconds(1000 + a - c);
     Servo2.writeMicroseconds(2000 - a - c);
 
+    // Done with servo channels
+
     // Output vibration channels
+    // These should drive PWM pins connected to vibration motors via MOSFETs or H-bridges.
     if ((vibe0 > 0) && (vibe0 <= 1000)) {
       analogWrite(Vibe0_PIN,map(vibe0,0,1000,63,255));
     } else {
@@ -444,6 +470,8 @@ void loop() {
     } else {
       analogWrite(Vibe1_PIN,0);
     }
+
+    // Done with vibration channels
     
   }
 
