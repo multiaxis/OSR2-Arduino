@@ -1,5 +1,5 @@
-// OSR-Release v2.2,
-// by TempestMAx 1-3-20
+// OSR-Release v2.3,
+// by TempestMAx 1-5-20
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // Can handle three linear channels (L0, L1, L2), three rotation channels (R0, R1, R2) 
@@ -11,6 +11,8 @@
 // v2.0 - TCode v0.2 compatible, 28-1-2020
 // v2.1 - OSR2 release, 1-2-2020
 // v2.2 - OSR2+ release, 1-3-2020
+// v2.3 - T-Valve support added, 1-5-2020
+
 
 // Libraries to include
 #include <Servo.h>
@@ -148,8 +150,6 @@ class ToyComms {
 
             // Check a channel and a number have been entered
             if (inNum1 < 100) {
-              Serial.print("Reject: ");
-              Serial.println(inNum1);
               linear = false;
               vibration = false;
               rotation = false;
@@ -353,7 +353,8 @@ class ToyComms {
                 identifyTCode();
               }
 
-             
+
+              Dbuff = 0;
             }
             
           }
@@ -491,12 +492,14 @@ Servo Servo0;  // Fore-Aft Servo
 Servo Servo1;  // Right Servo
 Servo Servo2;  // Left Servo
 Servo Servo3;  // Pitch Servo
+Servo Servo4;  // Valve Servo
 
 // Specify which pins are attached to what here
 #define Servo0_PIN 8  // Fore-Aft Servo
 #define Servo1_PIN 2  // Right Servo
 #define Servo2_PIN 3  // Left Servo
 #define Servo3_PIN 9  // Pitch Servo
+#define Servo4_PIN 12  // Valve Servo
 #define Vibe0_PIN 5   // Vibration motor 1
 #define Vibe1_PIN 6   // Vibration motor 2
 
@@ -510,6 +513,9 @@ int xLin,yLin,zLin;
 int xRot,yRot,zRot;
 // Vibration variables
 int vibe0,vibe1;
+// Velocity tracker variables, for T-Valve
+int xLast;
+float xValve;
 
 // Setup function
 // This is run once, when the arduino starts
@@ -524,11 +530,13 @@ void setup() {
   Servo1.attach(Servo1_PIN);
   Servo2.attach(Servo2_PIN);
   Servo3.attach(Servo3_PIN);
+  Servo4.attach(Servo4_PIN);
   delay(500);
   Servo0.writeMicroseconds(1500);
   Servo1.writeMicroseconds(1500);
   Servo2.writeMicroseconds(1500);
   Servo3.writeMicroseconds(1500);
+  Servo4.writeMicroseconds(1500);
 
   // Set vibration PWM pins
   pinMode(Vibe0_PIN,OUTPUT);
@@ -545,6 +553,10 @@ void setup() {
   tick = 20; //ms
   // Set time for first pulse
   nextPulse = millis() + tick;
+
+  // Velocity tracker
+  xLast = 500;
+  xValve = 0;
 
   // Signal done
   Serial.println("Ready!");
@@ -581,7 +593,7 @@ void loop() {
     xLin = toy.xLinear(0,t);
     yLin = toy.xLinear(1,t);
     //zLin = toy.xLinear(2,t); (not used)
-    //xRot = toy.xRotate(0,t); (not used)
+    xRot = toy.xRotate(0,t);
     yRot = toy.xRotate(1,t);
     zRot = toy.xRotate(2,t);
     vibe0 = toy.xVibe(0,t);
@@ -599,6 +611,24 @@ void loop() {
     lin2 = 1133*lin2;
     b2 = lin2;
 
+    // Calculate valve position
+    float Vel,ValveCmd,suck;
+    Vel = xLin - xLast;
+    xLast = xLin;
+    suck = 20;
+    if (Vel > suck) {
+      ValveCmd = Vel-suck;
+    } else if (Vel < 0){
+      ValveCmd = -Vel;
+    } else {
+      ValveCmd = 0;
+    }
+    xValve = (4*xValve + ValveCmd)/5;
+    int e;
+    e = 20*xValve;
+    if (e > 1000) {e = 1000;}
+
+
     // Mix and send servo channels
     // Linear scale inputs to servo appropriate numbers
     int a,b,c,d;
@@ -612,18 +642,19 @@ void loop() {
     Servo1.writeMicroseconds(1000 + a + c);
     Servo2.writeMicroseconds(2000 - a + c);
     Servo3.writeMicroseconds(1500 - d);
+    Servo4.writeMicroseconds(2000 - e);
 
     // Done with servo channels
 
     // Output vibration channels
     // These should drive PWM pins connected to vibration motors via MOSFETs or H-bridges.
     if ((vibe0 > 1) && (vibe0 <= 1000)) {
-      analogWrite(Vibe0_PIN,map(vibe0,2,1000,63,255));
+      analogWrite(Vibe0_PIN,map(vibe0,2,1000,31,255));
     } else {
       analogWrite(Vibe0_PIN,0);
     }
     if ((vibe1 > 1) && (vibe1 <= 1000)) {
-      analogWrite(Vibe1_PIN,map(vibe1,2,1000,63,255));
+      analogWrite(Vibe1_PIN,map(vibe1,2,1000,31,255));
     } else {
       analogWrite(Vibe1_PIN,0);
     }
