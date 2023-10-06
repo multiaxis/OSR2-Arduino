@@ -21,7 +21,7 @@ class TButton {
     if (debounce == debounceCount) {
       state = inputState;
       debounce = 0;
-      Serial.print("#" + buttonName);
+      Serial.print("#" + buttonName + ":");
       if (state) {Serial.println("1");} else {Serial.println("0");}
     }
 
