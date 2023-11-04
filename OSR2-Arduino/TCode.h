@@ -1,5 +1,11 @@
 // Tempest's TCode v0.3 library
 
+// T-Code Channels
+#define CHANNELS 4                // Number of channels of each type (LRVA)
+
+// Libraries used
+#include <EEPROM.h> // Permanent memory
+
 // -----------------------------
 // Class to handle each axis
 // -----------------------------
@@ -317,10 +323,10 @@ class TCode {
 
     // Look for device stop command
     if (command.substring(0,4) == "STOP") {
-        for (i = 0; i < 10; i++) { Linear[i].Stop(); }
-        for (i = 0; i < 10; i++) { Rotation[i].Stop(); }
-        for (i = 0; i < 10; i++) { Vibration[i].Set(0,' ',0); }
-        for (i = 0; i < 10; i++) { Auxiliary[i].Stop(); }  
+        for (i = 0; i < CHANNELS; i++) { Linear[i].Stop(); }
+        for (i = 0; i < CHANNELS; i++) { Rotation[i].Stop(); }
+        for (i = 0; i < CHANNELS; i++) { Vibration[i].Set(0,' ',0); }
+        for (i = 0; i < CHANNELS; i++) { Auxiliary[i].Stop(); }  
     } else {
       // Look for numbered device commands
       int commandNumber = command.toInt();
@@ -335,10 +341,10 @@ class TCode {
         break;
   
         case 2:
-          for (i = 0; i < 10; i++) { axisRow("L" + String(i), 8*i, Linear[i].Name); }
-          for (i = 0; i < 10; i++) { axisRow("R" + String(i), 8*i+80, Rotation[i].Name); }
-          for (i = 0; i < 10; i++) { axisRow("V" + String(i), 8*i+160, Vibration[i].Name); }
-          for (i = 0; i < 10; i++) { axisRow("A" + String(i), 8*i+240, Auxiliary[i].Name); }             
+          for (i = 0; i < CHANNELS; i++) { axisRow("L" + String(i), 8*i, Linear[i].Name); }
+          for (i = 0; i < CHANNELS; i++) { axisRow("R" + String(i), 8*i+80, Rotation[i].Name); }
+          for (i = 0; i < CHANNELS; i++) { axisRow("V" + String(i), 8*i+160, Vibration[i].Name); }
+          for (i = 0; i < CHANNELS; i++) { axisRow("A" + String(i), 8*i+240, Auxiliary[i].Name); }             
         break;
       }
     }

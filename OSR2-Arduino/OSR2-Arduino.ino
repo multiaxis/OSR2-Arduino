@@ -25,7 +25,7 @@
 // These are the setup parameters for an OSR2 on a Romeo BLE mini v2
 
 // Device IDs, for external reference
-#define FIRMWARE_ID "OSR2 Release v3.5"  // Device and firmware version
+#define FIRMWARE_ID "OSR2-Arduino Release v3.5"  // Device and firmware version
 #define TCODE_VER "TCode v0.3"  // Current version of TCode
 
 // Pin assignments
@@ -64,12 +64,8 @@
 #define MIN_SMOOTH_INTERVAL 3     // Minimum auto-smooth ramp interval for live commands (ms)
 #define MAX_SMOOTH_INTERVAL 100   // Maximum auto-smooth ramp interval for live commands (ms)
 
-// T-Code Channels
-#define CHANNELS 3                // Number of channels of each type (LRVA)
-
 // Libraries used
 #include <Servo.h>  // Standard Arduino servo library
-#include <EEPROM.h> // Permanent memory
 #include "TCode.h"  // Tempest's TCode library
 #include "TButtons.h"  // Tempest's TCode library
 
