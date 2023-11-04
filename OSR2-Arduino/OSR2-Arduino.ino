@@ -1,5 +1,5 @@
 // OSR-Release v3.5
-// by TempestMAx 4-10-23
+// by TempestMAx 4-11-23
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // It can handle:
@@ -16,6 +16,7 @@
 // v3.2 - Range preference variable storage bug fix, 24-8-21
 // v3.3 - Low speed vibration channel start function added, 3-11-21
 // v3.4 - Support for T-wist 4 added - standard servo now default, parallax is an option, 5-3-22
+// v3.5 - TCode library moved into a separate file. Buttons functionality added. 4-11-23
 
 
 // ----------------------------
@@ -45,6 +46,11 @@
 #define PitchServo_ZERO 1500  // Pitch Servo
 #define TwistServo_ZERO 1500  // Twist Servo
 #define ValveServo_ZERO 1500  // Valve Servo
+
+#define USE_BUTTONS true      // Use a Pre-Play-Next-Edge resistor ladder
+#define Buttons_PIN 14        // Buttons on analog pin A0 (== pin 14)
+#define USE_EDGEBUTTON true  // Use a Pre-Play-Next-Edge resistor ladder
+#define EdgeButton_PIN 15     // Buttons on analog pin A1 (== pin 15)
 
 // Other functions
 #define TWIST_PARALLAX false      // (true/false) Parallax 360 feedback servo on twist (t-wist3)
@@ -154,6 +160,8 @@ void setup() {
 
   // If T-wist3, initiate position tracking for twist
   if (TWIST_PARALLAX) { attachInterrupt(0, twistRising, RISING); }
+
+  if (USE_EDGEBUTTON) { pinMode(15, INPUT_PULLUP); }
   
   // Signal done
   Serial.println("Ready!");
@@ -173,12 +181,19 @@ void loop() {
     tcode.ByteInput(Serial.read());
   }
 
-  // Read buttons
-  int buttons = analogRead(3);
-  if (buttons > 1013) {edgeButton.update(true);} else { edgeButton.update(false); }
-  if (buttons > 501 && buttons < 521 ) { nextButton.update(true); } else { nextButton.update(false); }
-  if (buttons > 331 && buttons < 351) { playButton.update(true); } else { playButton.update(false); }
-  if (buttons > 245 && buttons < 265) { prevButton.update(true); } else { prevButton.update(false); }
+  // Read and update button states
+  bool edge = false;
+  if (USE_BUTTONS) {
+    int buttons = analogRead(Buttons_PIN);
+    if (buttons > 1013) { edge = true; }
+    if (buttons > 501 && buttons < 521 ) { nextButton.update(true); } else { nextButton.update(false); }
+    if (buttons > 331 && buttons < 351) { playButton.update(true); } else { playButton.update(false); }
+    if (buttons > 245 && buttons < 265) { prevButton.update(true); } else { prevButton.update(false); }
+  }
+  if (USE_EDGEBUTTON) {
+    if (!digitalRead(EdgeButton_PIN)) { edge = true; }
+  }
+  if (edge) {edgeButton.update(true);} else { edgeButton.update(false); }
 
   // Collect inputs
   // These functions query the t-code object for the position/level at a specified time
