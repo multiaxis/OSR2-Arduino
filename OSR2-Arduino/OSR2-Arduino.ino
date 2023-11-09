@@ -1,5 +1,5 @@
-// OSR-Release v3.5
-// by TempestMAx 4-11-23
+// OSR-Release v3.6
+// by TempestMAx 9-11-23
 // Please copy, share, learn, innovate, give attribution.
 // Decodes T-code commands and uses them to control servos and vibration motors
 // It can handle:
@@ -17,6 +17,7 @@
 // v3.3 - Low speed vibration channel start function added, 3-11-21
 // v3.4 - Support for T-wist 4 added - standard servo now default, parallax is an option, 5-3-22
 // v3.5 - TCode library moved into a separate file. Buttons functionality added. 4-11-23
+// v3.6 - Buttons changed from Prev/Play/Next to left/ok/right 9-11-23
 
 
 // ----------------------------
@@ -25,7 +26,7 @@
 // These are the setup parameters for an OSR2 on a Romeo BLE mini v2
 
 // Device IDs, for external reference
-#define FIRMWARE_ID "OSR2-Arduino Release v3.5"  // Device and firmware version
+#define FIRMWARE_ID "OSR2-Arduino Release v3.6"  // Device and firmware version
 #define TCODE_VER "TCode v0.3"  // Current version of TCode
 
 // Pin assignments
@@ -79,10 +80,10 @@
 // This uses the t-code object above
 TCode tcode(FIRMWARE_ID, TCODE_VER);
 
-TButton edgeButton("Edge",10);
-TButton nextButton("Next",10);
-TButton playButton("Play",10);
-TButton prevButton("Prev",10);
+TButton edgeButton("edge",10);
+TButton rightButton("right",10);
+TButton okButton("ok",10);
+TButton leftButton("left",10);
 
 // Declare servos
 Servo LeftServo;
@@ -182,9 +183,9 @@ void loop() {
   if (USE_BUTTONS) {
     int buttons = analogRead(Buttons_PIN);
     if (buttons > 1013) { edge = true; }
-    if (buttons > 501 && buttons < 521 ) { nextButton.update(true); } else { nextButton.update(false); }
-    if (buttons > 331 && buttons < 351) { playButton.update(true); } else { playButton.update(false); }
-    if (buttons > 245 && buttons < 265) { prevButton.update(true); } else { prevButton.update(false); }
+    if (buttons > 501 && buttons < 521 ) { rightButton.update(true); } else { rightButton.update(false); }
+    if (buttons > 331 && buttons < 351) { okButton.update(true); } else { okButton.update(false); }
+    if (buttons > 245 && buttons < 265) { leftButton.update(true); } else { leftButton.update(false); }
   }
   if (USE_EDGEBUTTON) {
     if (!digitalRead(EdgeButton_PIN)) { edge = true; }
