@@ -10,10 +10,10 @@ Drives OSR2-class devices.
 
 | Release Date | Version | Notes                                                                                   |
 | -----------: | :-----: | :-------------------------------------------------------------------------------------- |
-|   2020-09-23 |  v2.6   | Experimental build. For use with Parallax Feedback 360° Servo (900-00360) in T-wist     |
-|   2020-07-23 |  v2.5   | Experimental build. Servo Library replaced with alternative capable of high frequencies |
-|   2020-07-01 |  v2.4   | T-wist support added                                                                    |
-|   2020-05-01 |  v2.3   | T-Valve support added                                                                   |
-|   2020-03-01 |  v2.2   | OSR2+ release                                                                           |
-|   2020-02-01 |  v2.1   | OSR2 release                                                                            |
-|   2020-01-28 |  v2.0   | TCode v0.2 compatible                                                                   |
+|   2023-11-09 |  v3.6   | Buttons changed from Prev/Play/Next to left/ok/right                                    |
+|   2023-11-04 |  v3.5   | TCode library moved into a separate file. Buttons functionality added                   |
+|   2022-03-05 |  v3.4   | Support for T-wist 4 added - standard servo now default, parallax is an option          |
+|   2021-11-03 |  v3.3   | Low speed vibration channel start function added                                        |
+|   2021-08-24 |  v3.2   | Range preference variable storage bug fix                                               |
+|   2021-07-07 |  v3.1   | Buffer overload bug fix by limiting to 3x4 T-Code channels, axis auto-smoothing for live commands added |
+|   2021-05-08 |  v3.0   | TCode v0.3 compatible                                                                   |
